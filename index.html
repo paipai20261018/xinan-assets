@@ -98,6 +98,8 @@ body.standalone .statusbar{display:none}
 .spark{width:96px;height:44px;flex:0 0 auto}
 .notice{display:flex;align-items:center;gap:6px;background:#F4F7FE;border-radius:10px;padding:9px 11px;font-size:11.5px;color:var(--ink2);margin-top:8px;overflow:hidden;white-space:nowrap}
 .notice .nt{overflow:hidden;text-overflow:ellipsis;flex:1}
+.notice.warn{background:#FFF3E4;color:#A45B12;font-weight:600}
+.bkbar{width:4px;height:38px;border-radius:4px;flex:0 0 auto}
 .total{text-align:center;color:var(--sub);font-size:12px;margin-top:12px;letter-spacing:.2px}
 
 /* 叠层资产卡 */
@@ -333,7 +335,7 @@ body.standalone .statusbar{display:none}
             <path d="M2 36 L22 36 L22 30 L44 30 L44 24 L64 24 L64 14 L86 14 L86 6 L94 6" fill="none" stroke="#6E94F5" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>
           </svg>
         </div>
-        <div class="notice" data-act="open-remind"><span>🔔</span><span class="nt" id="noticeTxt">宝马5系：每月15日还款 5880.69 元</span><span>›</span></div>
+        <div class="notice" id="homeNotice" data-act="open-remind"><span class="nic">🔔</span><span class="nt" id="noticeTxt">宝马5系：每月15日还款 5880.69 元</span><span>›</span></div>
         <div class="total">总资产：<span id="totalVal">19,487,843.42</span></div>
       </div>
 
@@ -514,6 +516,16 @@ body.standalone .statusbar{display:none}
     <section class="view" id="v-mine">
       <div class="profile"><div class="av" id="mineAvatar">留</div><div><b id="mineName">留芳庄主</b><small id="mineLevel">A8 · 心安会员</small></div></div>
       <div class="card" style="margin-bottom:12px">
+        <b class="sec-title">备份与防丢失</b>
+        <div id="backupStatus" style="display:flex;align-items:center;gap:10px;margin:12px 0 6px"></div>
+        <div class="setrow" data-act="backup-now"><span class="k">一键备份（分享到微信 / 文件）</span><span class="v">›</span></div>
+        <div class="setrow" data-act="copy-backup"><span class="k">复制备份到剪贴板</span><span class="v">›</span></div>
+        <div class="setrow" data-act="export"><span class="k">下载备份文件（JSON）</span><span class="v">›</span></div>
+        <div class="setrow"><span class="k">定期提醒我备份</span><span class="sw on" id="setRemind" data-act="toggle-remind"></span></div>
+        <div class="setrow" data-act="backup-help"><span class="k">清缓存为什么会丢？怎么办</span><span class="v">›</span></div>
+        <p class="sub" id="persistInfo" style="margin:10px 0 0;line-height:1.7">存储状态检测中…</p>
+      </div>
+      <div class="card" style="margin-bottom:12px">
         <b class="sec-title">偏好设置</b>
         <div class="setrow"><span class="k">隐藏金额</span><span class="sw" id="setHide" data-act="toggle-hide"></span></div>
         <div class="setrow"><span class="k">固定资产按估值算</span><span class="sw on" id="setVal" data-act="toggle-val"></span></div>
@@ -522,16 +534,15 @@ body.standalone .statusbar{display:none}
       </div>
       <div class="card" style="margin-bottom:12px">
         <b class="sec-title">数据管理</b>
-        <div class="setrow" data-act="export"><span class="k">导出备份（JSON）</span><span class="v">›</span></div>
-        <div class="setrow" data-act="import"><span class="k">导入备份</span><span class="v">›</span></div>
+        <div class="setrow" data-act="import"><span class="k">导入备份（清缓存后从这里恢复）</span><span class="v">›</span></div>
         <div class="setrow" data-act="clear-demo"><span class="k">清空演示数据</span><span class="v">›</span></div>
         <div class="setrow" data-act="reset"><span class="k">恢复初始演示数据</span><span class="v">›</span></div>
       </div>
       <div class="card" style="margin-bottom:12px">
         <b class="sec-title">隐私与安全</b>
-        <p class="sub" style="margin:10px 0 0">所有资产、档案、物品与图片只保存在本机浏览器（localStorage），不上传服务器、不接入任何银行接口。银行卡余额需手动更新；股票基金市值在演示版中由本地记录计算。请定期导出 JSON 备份。</p>
+        <p class="sub" style="margin:10px 0 0;line-height:1.7">所有资产、档案、物品与图片只保存在本机浏览器（localStorage），不上传服务器、不接入任何银行接口。银行卡余额需手动更新；股票基金市值在演示版中由本地记录计算。<b>清理浏览器「站点数据」会连本地账本一起删掉</b>，请按上方「备份与防丢失」把备份存到浏览器之外。</p>
       </div>
-      <div class="card"><b class="sec-title">关于</b><p class="sub" style="margin:10px 0 0">心安 · 数字资产（界面复刻演示版）<br>参考小红书笔记与 App Store 公开资料制作 · 非官方产品<br>版本 1.0 · 2026</p></div>
+      <div class="card"><b class="sec-title">关于</b><p class="sub" style="margin:10px 0 0">心安 · 数字资产（界面复刻演示版）<br>参考小红书笔记与 App Store 公开资料制作 · 非官方产品<br>版本 1.1 · 2026（新增备份防丢失）</p></div>
     </section>
 
     <!-- 搜索 -->
