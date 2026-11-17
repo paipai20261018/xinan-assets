@@ -96,7 +96,11 @@ function demo() {
     shareTab: 'out',
     folder: '个人档案',
     itemId: null,
-    updated: today()
+    updated: today(),
+    lastBackup: null,
+    backupHash: '',
+    remindBackup: true,
+    touched: false
   };
 }
 
@@ -108,17 +112,141 @@ function load() {
       const d = JSON.parse(raw);
       if (d && d.base) {
         if ('net' in d.base) delete d.base.net;
-        return Object.assign(demo(), d);
+        const merged = Object.assign(demo(), d);
+        // 旧版本升级：从未做过备份的老账本，提醒一次先备份
+        if (!('lastBackup' in d)) merged.touched = true;
+        return merged;
       }
     }
   } catch (e) { console.warn('读取本地数据失败', e); }
   return demo();
 }
+let lastHash = null;
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); }
+  try {
+    const h = dataHash();
+    if (lastHash !== null && h !== lastHash) S.touched = true;
+    lastHash = h;
+    localStorage.setItem(KEY, JSON.stringify(S));
+  }
   catch (e) { toast('存储空间不足，建议删除部分图片'); }
 }
 S = load();
+lastHash = dataHash();
+
+/* ---------------- 备份防丢失 ---------------- */
+// 只给「账本内容」算指纹，切换页面/币种等 UI 状态不会误判成"未备份"
+function dataHash() {
+  const core = { profile:S.profile, base:S.base, assets:S.assets, docs:S.docs,
+    shared:S.shared, items:S.items, holdings:S.holdings, pnl:S.pnl,
+    goals:S.goals, reminders:S.reminders, holdingShot:S.holdingShot };
+  const str = JSON.stringify(core);
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return String(h);
+}
+function daysSince(d) {
+  if (!d) return null;
+  const a = new Date(d + 'T00:00:00'), b = new Date(today() + 'T00:00:00');
+  return Math.round((b - a) / 86400000);
+}
+function backupState() {
+  const dirty = !S.backupHash || S.backupHash !== dataHash();
+  const days = daysSince(S.lastBackup);
+  let need = false;
+  if (S.remindBackup) {
+    if (!S.lastBackup) need = !!S.touched;                    // 从未备份：开始记账后才提醒
+    else need = dirty && days !== null && days >= 7;          // 备份过：有改动且超过 7 天
+  }
+  return { dirty:dirty, days:days, need:need, never:!S.lastBackup, touched:!!S.touched };
+}
+function markBackedUp() {
+  S.lastBackup = today(); S.backupHash = dataHash(); save();
+}
+// 备份文件自身带上备份日期与数据指纹，导入后可直接判定为"已备份"
+function backupText() {
+  const snap = Object.assign({}, S, { lastBackup: today(), backupHash: dataHash() });
+  return JSON.stringify(snap, null, 2);
+}
+function backupName() { return '心安资产备份_' + today() + '.json'; }
+function downloadBackup(txt, name) {
+  const blob = new Blob([txt], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function backupNow() {
+  const txt = backupText(), name = backupName();
+  try {
+    const file = new File([txt], name, {type:'application/json'});
+    if (navigator.canShare && navigator.canShare({files:[file]})) {
+      await navigator.share({files:[file], title:'心安资产备份', text:'心安账本备份 · ' + today()});
+      markBackedUp(); renderAll(); toast('已分享，请保存到微信收藏或「文件」App'); return;
+    }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  downloadBackup(txt, name); markBackedUp(); renderAll();
+  toast('备份已下载，请移出浏览器下载目录保存');
+}
+async function copyBackup() {
+  const txt = backupText();
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; }
+  catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand('copy'); document.body.removeChild(ta);
+    } catch (e2) { ok = false; }
+  }
+  if (ok) { markBackedUp(); renderAll(); toast('备份已复制，粘贴到微信 / 备忘录保存'); }
+  else toast('复制失败，请改用「一键备份」下载文件');
+}
+
+let storageInfo = { persisted:null, usage:0, quota:0 };
+async function initStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persisted)
+      storageInfo.persisted = await navigator.storage.persisted();
+    if (storageInfo.persisted === false && navigator.storage && navigator.storage.persist)
+      storageInfo.persisted = await navigator.storage.persist();
+    if (navigator.storage && navigator.storage.estimate) {
+      const e = await navigator.storage.estimate();
+      storageInfo.usage = e.usage || 0; storageInfo.quota = e.quota || 0;
+    }
+  } catch (e) {}
+  renderBackupCard();
+}
+function renderBackupCard() {
+  const el = $('#backupStatus'); if (!el) return;
+  const st = backupState();
+  let bar, title, sub;
+  if (st.never) {
+    bar = '#E8892B'; title = st.touched ? '还没备份过' : '尚未备份';
+    sub = '把账本存到浏览器之外，清缓存才不会丢';
+  } else if (st.dirty) {
+    bar = '#E8892B'; title = '有未备份的改动';
+    sub = '上次备份 ' + S.lastBackup + ' · 已过 ' + st.days + ' 天';
+  } else {
+    bar = '#2BA56B'; title = '已是最新备份';
+    sub = '上次备份 ' + S.lastBackup + '（' + st.days + ' 天前）';
+  }
+  el.innerHTML = '<div class="bkbar" style="background:'+bar+'"></div>' +
+    '<div style="display:flex;align-items:center;gap:8px;flex:1"><span style="font-size:18px">'+(st.dirty?'⚠️':'✅')+'</span>' +
+    '<div><b style="font-size:13.5px">'+title+'</b><div class="sub" style="margin-top:2px">'+sub+'</div></div></div>';
+  const sw = $('#setRemind'); if (sw) sw.classList.toggle('on', !!S.remindBackup);
+  const info = $('#persistInfo');
+  if (info) {
+    let s;
+    if (storageInfo.persisted === true) s = '✅ 已开启持久化存储：浏览器不会因空间不足自动清除本站数据。';
+    else if (storageInfo.persisted === false) s = '⚠️ 浏览器未授予持久化存储，请务必定期备份。';
+    else s = '存储状态检测中…';
+    if (storageInfo.usage) s += ' 当前占用约 ' + (storageInfo.usage/1024).toFixed(0) + ' KB。';
+    s += ' 注意：手动「清除浏览数据 / Cookie 及网站数据」仍会清掉本地数据，只有存到浏览器之外的备份不受影响。';
+    info.textContent = s;
+  }
+}
 
 /* ---------------- 计算 ---------------- */
 function rate() { return RATES[S.profile.currency] || 1; }
@@ -211,7 +339,23 @@ function renderHome() {
   $('#currLabel').textContent = S.profile.currency;
   $('#netVal').textContent = disp(t.net);
   $('#totalVal').textContent = disp(t.asset);
-  $('#noticeTxt').textContent = (S.reminders[0] && S.reminders[0].text) || '暂无提醒';
+  const st = backupState();
+  const nt = $('#homeNotice');
+  if (nt) {
+    if (st.need) {
+      nt.dataset.act = 'backup-now'; nt.classList.add('warn');
+      const ic = nt.querySelector('.nic'); if (ic) ic.textContent = '⚠️';
+      $('#noticeTxt').textContent = st.never
+        ? '还没备份过，点这里把账本存到微信 / 文件，清缓存也不怕'
+        : '距上次备份已 ' + st.days + ' 天且有新记录，建议重新备份';
+    } else {
+      nt.dataset.act = 'open-remind'; nt.classList.remove('warn');
+      const ic = nt.querySelector('.nic'); if (ic) ic.textContent = '🔔';
+      $('#noticeTxt').textContent = (S.reminders[0] && S.reminders[0].text) || '暂无提醒';
+    }
+  } else {
+    $('#noticeTxt').textContent = (S.reminders[0] && S.reminders[0].text) || '暂无提醒';
+  }
   $('#valSw').classList.toggle('on', S.profile.useValuation);
   const eye = $('.eye svg use'); if (eye) eye.setAttribute('href', S.profile.hide ? '#i-eyeoff' : '#i-eye');
   renderStack();
@@ -393,6 +537,7 @@ function renderMine() {
   $('#setCurr').textContent = S.profile.currency + ' ›';
   $('#setHide').classList.toggle('on', S.profile.hide);
   $('#setVal').classList.toggle('on', S.profile.useValuation);
+  renderBackupCard();
 }
 function renderSearch() {
   const q = ($('#searchInput').value || '').trim().toLowerCase();
@@ -426,6 +571,7 @@ function renderAll() {
   const cur = ($('.view.on') || {}).id || 'v-home';
   render(cur.replace('v-',''));
   renderHome();
+  renderBackupCard();
 }
 
 /* ---------------- 表单弹窗 ---------------- */
@@ -561,11 +707,8 @@ function formRemind() {
 
 /* ---------------- 导入导出 / 图片 ---------------- */
 function exportData() {
-  const blob = new Blob([JSON.stringify(S, null, 2)], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = '心安资产备份_' + today() + '.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  downloadBackup(backupText(), backupName());
+  markBackedUp(); renderAll();
   toast('备份已导出，请妥善保存');
 }
 function importData(file) {
@@ -574,7 +717,9 @@ function importData(file) {
     try {
       const d = JSON.parse(r.result);
       if (!d || !d.base) throw new Error('格式不符');
-      S = Object.assign(demo(), d); save(); renderAll(); toast('备份已导入');
+      S = Object.assign(demo(), d);
+      lastHash = dataHash();
+      markBackedUp(); renderAll(); toast('备份已导入，可从这里继续记账');
     } catch (e) { toast('导入失败：不是有效的心安备份文件'); }
   };
   r.readAsText(file);
@@ -658,6 +803,22 @@ const ACTS = {
   'import-holding': () => { $('#imgInput').dataset.mode = 'holding'; $('#imgInput').click(); },
   'export': exportData,
   'import': () => $('#fileInput').click(),
+  'backup-now': backupNow,
+  'copy-backup': copyBackup,
+  'toggle-remind': () => { S.remindBackup = !S.remindBackup; save(); renderAll(); toast(S.remindBackup?'已开启备份提醒':'已关闭备份提醒'); },
+  'backup-help': () => openSheet(
+    head('清缓存为什么会丢数据', '以及怎么让它真的丢不了') +
+    '<div class="card" style="background:#F6F9FE;margin-bottom:12px"><p class="sub" style="margin:0">账本存在浏览器的「站点数据」里。清理时如果勾选了「Cookie 及网站数据 / 清除浏览数据」，这份数据会被一起删掉。这是浏览器自身的设计，任何纯本地网页都无法阻止用户手动清除。</p></div>' +
+    '<div class="card" style="margin-bottom:12px"><b class="sec-title">真正有效的做法</b><div class="sub" style="margin-top:10px;line-height:1.75">' +
+      '① 点「一键备份」，把 JSON 分享到微信收藏、文件传输助手或手机「文件」App。文件在浏览器之外，清缓存不影响它。<br>' +
+      '② 万一数据被清了：重新打开 App，用「导入备份」选中那份文件即可完整恢复。<br>' +
+      '③ 建议每月更新余额后顺手备份一次；重要资料另外单独存一份。</div></div>' +
+    '<div class="card" style="margin-bottom:12px"><b class="sec-title">已经做的加固</b><div class="sub" style="margin-top:10px;line-height:1.75">' +
+      '· 已申请持久化存储，避免浏览器因空间不足自动清除<br>' +
+      '· 添加到主屏幕（PWA）后数据更稳定<br>' +
+      '· 有改动且超过 7 天未备份，会在首页和这里提醒<br><br>' +
+      '注意：这些只能防「自动清理」，防不住手动清除浏览数据。</div></div>' +
+    actions('知道了','close')),
   'clear-demo': () => {
     openSheet(head('清空演示数据','将移除内置演示底账、示例档案、物品与持仓，只保留你后来自己添加的资产明细。建议先导出备份。') +
       actions('确认清空','do-clear'));
@@ -726,4 +887,5 @@ function tick() {
 tick(); setInterval(tick, 30000);
 
 renderAll();
+initStorage();
 })();
