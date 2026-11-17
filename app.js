@@ -376,9 +376,9 @@ function renderInvest() {
     const wd = new Date(y,m,d).getDay(), rest = (wd===0||wd===6);
     const p = S.pnl[d];
     let cls = 'calcell', txt = '';
-    if (rest) { cls += ' rest'; txt = '<span class="pnl">休市日</span>'; }
-    else if (p === undefined) { txt = '<span class="pnl" style="color:#C6CFDF">0.00</span>'; }
-    else { cls += p>=0 ? ' plus':' minus'; txt = '<span class="pnl">'+(p>0?'+':'')+p.toFixed(2)+'</span>'; }
+    if (p !== undefined) { cls += p>=0 ? ' plus':' minus'; txt = '<span class="pnl">'+(p>0?'+':'')+p.toFixed(2)+'</span>'; }
+    else if (rest) { cls += ' rest'; txt = '<span class="pnl">休市日</span>'; }
+    else { txt = '<span class="pnl" style="color:#C6CFDF">0.00</span>'; }
     html += '<div class="'+cls+'"><span class="d">'+d+'</span>'+txt+'</div>';
   }
   $('#calGrid').innerHTML = html;
